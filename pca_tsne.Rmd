@@ -1,0 +1,111 @@
+---
+title: "Exemplos com PCA e T-SNE"
+author: "Diego Pereira"
+date: "20-08-2016"
+output: html_document
+---
+
+
+```{r}
+require(ggplot2, quietly = TRUE, warn.conflicts = F)
+require(GGally, quietly = TRUE, warn.conflicts = F)
+require(reshape, quietly = TRUE, warn.conflicts = F)
+require(dplyr, quietly = TRUE, warn.conflicts = F)
+require(reshape2, quietly = TRUE, warn.conflicts = F)
+require(clusterSim, quietly = TRUE, warn.conflicts = F)
+require(cluster, quietly = TRUE, warn.conflicts = F)
+require(ggdendro, quietly = TRUE, warn.conflicts = F)
+library("dplyr", quietly = TRUE, warn.conflicts = F)
+library("ggplot2", quietly = TRUE, warn.conflicts = F)
+library("reshape2", quietly = TRUE, warn.conflicts = F)
+library("reshape", quietly = TRUE, warn.conflicts = F)
+library(clusterSim, quietly = TRUE, warn.conflicts = F)
+require(ggplot2, quietly = TRUE, warn.conflicts = F)
+library(ggfortify, quietly = TRUE, warn.conflicts = F)
+require(GGally, quietly = TRUE, warn.conflicts = F)
+library(knitr, quietly = TRUE, warn.conflicts = F)
+library(cluster, quietly = TRUE, warn.conflicts = F)
+library(ggdendro, quietly = TRUE, warn.conflicts = F)
+```
+
+Essas duas abordagens são voltadas para a redução de dimensionalidade, reduzindo vetores com n dimensões para um número menor, geralmente 2 ou 3 dimensões (algo que se enquadre no campo visual).
+
+Carregando os dados:
+
+(Setar a semente no começo talvez não seja bom, você deseja "rodar" até que os dados façam sentido)
+
+
+
+# PCA
+
+
+```{r}
+set.seed(42)
+dados_t <- read.csv("~/backup11/AnoAtual.csv")
+#pegar fatia menor dos dados
+dados <- subset(dados_t, select = c(sgPartido, sgUF, vlrLiquido, txtDescricao, txNomeParlamentar))
+
+#pegar apenas os gastos que considero essenciais
+dados <- filter(dados, txtDescricao == "COMBUSTÍVEIS E LUBRIFICANTES." | txtDescricao == "DIVULGAÇÃO DA ATIVIDADE PARLAMENTAR." | 
+                  txtDescricao == "Emissão Bilhete Aéreo" | txtDescricao == "SERVIÇOS POSTAIS" | txtDescricao == "TELEFONIA")
+
+#agrupar gastos de cada tipo por cada deputado
+acumulado <- dados %>% group_by(txNomeParlamentar, txtDescricao, sgPartido, sgUF) %>% summarise(vlrLiquido = sum(vlrLiquido))
+
+```
+
+
+
+Transformar o dado em um dado horizontal:
+Quanto cada politico gastou com cada item, assim temos um vetor onde as dimensões são os gastos com esses itens.
+
+```{r}
+data_wide <- dcast(acumulado, txNomeParlamentar + sgPartido + sgUF ~ txtDescricao, value.var="vlrLiquido")
+data_wide[is.na(data_wide)] <- 0
+colnames(data_wide) <- c("nome", "partido", "UF", "combustivel", "divulgacao", "bilheteA", "postal", "telefonia")
+
+#Dados normalizados, sempre verificar se é o que você realmente quer
+
+#data_wide <- data.Normalization(data_wide,type="n0",normalization="column")
+data_wide$combustivel <- data.Normalization(data_wide$combustivel,type="n1",normalization="column")
+data_wide$divulgacao <- data.Normalization(data_wide$divulgacao,type="n1",normalization="column")
+data_wide$bilheteA <- data.Normalization(data_wide$bilheteA,type="n1",normalization="column")
+data_wide$postal <- data.Normalization(data_wide$postal,type="n1",normalization="column")
+data_wide$telefonia <- data.Normalization(data_wide$telefonia,type="n1",normalization="column")
+```
+
+Aqui reduzi os dados a 5 partidos: (os principais)
+
+```{r}
+data_wide_2 <- filter(data_wide, partido == "PT" | partido == "PMDB" | partido == "PSDB" | partido == "PP" | partido == "PSD")
+
+# onde a mágica acontece
+pr.out = prcomp(dplyr::select(data_wide_2, -(nome:UF)), scale = TRUE) 
+
+#autoplot do pca
+autoplot(pr.out, label.size = 3,loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 3,  data = data_wide_2,colour = "partido") 
+```
+
+Caso seja necessário, rodar várias vezes escolhendo a semente antes.
+
+
+# T-sne
+
+```{r}
+require(Rtsne)
+tsne.out = Rtsne(dplyr::select(data_wide_2, -(nome:UF)), 
+                 verbose = TRUE)
+
+df = as.data.frame(tsne.out$Y)
+df$partido = data_wide_2$partido
+
+ggplot(df, aes(x = V1, y = V2, label = partido)) + 
+  geom_point(alpha = 0.8, size = 3, color = "tomato") 
+
+ggplot(df, aes(x = V1, y = V2, label = partido)) + 
+  geom_point(alpha = 0.2, size = 3, color = "tomato") + 
+  geom_text(alpha = .7, size = 4, hjust = -.2)
+```
+
+
